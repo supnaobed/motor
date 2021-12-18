@@ -68,6 +68,23 @@ int begin(Motor * motor){
     return -1;
 }
 
+
+int set_encoder_enable(Motor * motor, int id, int reduction_ratio){
+    uint8_t	data[2];																				
+    int arr[MOTOR_COUNT];
+    int size;
+    if (parse_id(id, arr, &size) < 0) return -1;
+    for (int i = 0; i < size; ++i){
+        int reg = REG_ENCODER1_REDUCTION_RATIO + 5 * (i - 1);
+        data[0] = reduction_ratio >> 8;
+        data[1] = reduction_ratio & 0xff;
+        if (_write_bytes(*motor, reg, data, 2) < 0) {
+            return -1;
+        }					
+    }
+    return 1;
+}
+
 int get_encoder_speed(Motor * motor, int id, uint8_t * result, int * size) {
     int arr[MOTOR_COUNT];
     int ret = parse_id(id, arr, size);
