@@ -2,47 +2,22 @@
 #include "../include/Motor.h"
 #include <stdio.h>
 #include <unistd.h>
+#include <fcntl.h>
+#ifdef __linux__
 #include <linux/i2c-dev.h>
-
-void print_speed(Motor motor){
-    uint8_t data[MOTOR_COUNT];
-    int size;
-    int ret = get_encoder_speed(&motor, ALL, data, &size);
-    for (int i = 0; i < size; ++i){
-        printf("result_speed %d of motor %d\n", data[i], i);
-    }
-}
-
-int main(){
-    uint8_t addr;
-    Motor motor;
-    int ret;
-
-    char * filename = "/dev/i2c-1";
-    int file_i2c = 0;
-     if((file_i2c = open(filename, O_RDWR))<0){
-       printf("can't open file_i2c\n");
-     }
-  
-    motor.fd = file_i2c;
-    //fixit
-    motor.command = 1;
-    addr = 0x10;
-    ret = set_addr(&motor, addr);
-    printf("set_addr status %d\n", ret);
-    ret = motor_stop(&motor, ALL);
-    printf("motor_stop status %d\n", ret);
-    ret = motor_movement(&motor, ALL, 1);
-    printf("motor_movement status %d\n", ret);
-    return ret;
-}
+#endif
 
 int _write_bytes(Motor motor, uint8_t reg, uint8_t *data, int size);
 int _read_bytes(Motor motor, uint8_t reg, uint8_t *data);
 int _set_value(Motor * motor, int id, uint8_t reg, uint8_t value);
+int _init_driver(Motor * motor);
 
-void _set_control_mode(Motor motor, int mode){
-    // _write_bytes(self._REG_CTRL_MODE, [mode])
+int _set_control_mode(Motor * motor, int mode){
+    uint8_t reg;
+    uint8_t	data[1];																				
+    data[0] = mode;
+    reg = REG_CTRL_MODE;									
+    return _write_bytes(*motor, reg, data, 1);
 }
 
 int set_addr(Motor * motor, uint8_t addr){
@@ -51,7 +26,7 @@ int set_addr(Motor * motor, uint8_t addr){
     uint8_t	data[1];																				
 
     devcm.fd = motor->fd;
-    devcm.comand = 0;
+    devcm.comand = motor->command;
     int res = checkAddress(devcm, addr);
     printf("check_addr status %d\n", res);
     if (res < 0) {
@@ -63,26 +38,24 @@ int set_addr(Motor * motor, uint8_t addr){
     return _write_bytes(*motor, reg, data, 1);
 }
 
-int begin(Motor * motor){
-    								
-    return -1;
-}
-
-
-int set_encoder_enable(Motor * motor, int id, int reduction_ratio){
-    uint8_t	data[2];																				
-    int arr[MOTOR_COUNT];
-    int size;
-    if (parse_id(id, arr, &size) < 0) return -1;
-    for (int i = 0; i < size; ++i){
-        int reg = REG_ENCODER1_REDUCTION_RATIO + 5 * (i - 1);
-        data[0] = reduction_ratio >> 8;
-        data[1] = reduction_ratio & 0xff;
-        if (_write_bytes(*motor, reg, data, 2) < 0) {
-            return -1;
-        }					
+int begin(Motor * motor, uint8_t addr){
+    int ret;
+    ret = _init_driver(motor);
+    if (ret < 0){
+        return ret;
     }
-    return 1;
+    ret = set_addr(motor, addr);
+    if (ret < 0){
+        return ret;
+    }
+    printf("set_addr status %d\n", ret);
+    ret = _set_control_mode(motor, 0x00);
+    if (ret < 0){
+        return ret;
+    }
+    printf("set_control status %d\n", ret);
+    ret = motor_stop(motor, ALL);						
+    return ret;
 }
 
 int get_encoder_speed(Motor * motor, int id, uint8_t * result, int * size) {
@@ -91,7 +64,7 @@ int get_encoder_speed(Motor * motor, int id, uint8_t * result, int * size) {
     if (ret < 0){
         return ret;
     }
-    uint8_t	data[2];																				
+    uint8_t	data[10];																				
     for (int i = 0; i < *size; ++i){
         uint8_t value = REG_ENCODER1_SPPED + 5 * (arr[i] - 1);
         ret = _read_bytes(*motor, value, data);
@@ -115,16 +88,26 @@ int motor_stop(Motor * motor, int id){
     return _set_value(motor, id, REG_MOTOR1_ORIENTATION + 3, STOP);
 }
 
-int motor_movement(Motor * motor, int id, int speed){
+int motor_movement(Motor * motor, int id, int speed, int orientation){
     if (speed > 100.0 || speed < 0.0) {
         return -1;
-    } else {
-        uint8_t	data[2];																				
+    } else {																		
         int arr[MOTOR_COUNT];
         int size;
         if (parse_id(id, arr, &size) < 0) return -1;
+  	    for (int i = 0; i < size; ++i){
+	        uint8_t	data[1];
+            int reg = REG_MOTOR1_ORIENTATION + (arr[i] - 1) * 3;
+	        printf("write orientation %d\n", reg);
+            data[0] = orientation;
+            if (_write_bytes(*motor, reg, data, 1) < 0) {
+                return -1;
+            }					
+        }
         for (int i = 0; i < size; ++i){
-            int reg = REG_MOTOR1_SPEED + (i - 1) * 3;
+	        uint8_t	data[2];	
+            int reg = REG_MOTOR1_ORIENTATION + (arr[i] - 1) * 3 + 1;
+	        printf("write speed %d\n", reg);
             data[0] = speed;
             data[1] = (speed * 10) % 10;
             if (_write_bytes(*motor, reg, data, 2) < 0) {
@@ -150,6 +133,14 @@ int _set_value(Motor * motor, int id, uint8_t reg, uint8_t value){
     return 0;
 }
     
+void print_speed(Motor motor){
+    uint8_t data[MOTOR_COUNT];
+    int size;
+    int ret = get_encoder_speed(&motor, ALL, data, &size);
+    for (int i = 0; i < size; ++i){
+        printf("result_speed %d of motor %d\n", data[i], i);
+    }
+}
 
 
 int parse_id(int id, int * arr, int * size){
@@ -170,7 +161,21 @@ int parse_id(int id, int * arr, int * size){
     }
     return ret;
 }
-    
+
+int _init_driver(Motor * motor){
+    char * filename = "/dev/i2c-1";
+    int file_i2c = 0;
+    if((file_i2c = open(filename, O_RDWR))<0){
+        printf("can't open file_i2c\n");
+        return -1;
+    }
+  
+    motor->fd = file_i2c;
+    #ifdef __linux__
+    motor->command = I2C_SLAVE;
+    #endif
+    return 0;
+} 
 
 int _write_bytes(Motor motor, uint8_t reg, uint8_t *data, int size) {
     int ret; 

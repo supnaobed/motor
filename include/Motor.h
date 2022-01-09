@@ -42,8 +42,8 @@
 #define control_mode_stepper 0x01
 
 // Orientation and global variables 
-#define CW 0x01     # clockwise
-#define CCW 0x02    # countclockwise
+#define CW 0x01     //clockwise
+#define CCW 0x02    //countclockwise
 #define STOP 0x05
 #define ALL 0xffffffff
 
@@ -55,11 +55,14 @@ typedef struct Motor
 } Motor;
 
 
-int begin(Motor * motor);
+int begin(Motor * motor, uint8_t addr);
 int set_addr(Motor * motor, uint8_t addr);
 int motor_stop(Motor * motor, int id);
 int parse_id(int id, int * ret, int * size);
 int set_encoder_enable(Motor * motor, int id);
 int get_encoder_speed(Motor * motor, int id, uint8_t * result, int * size);
-int motor_movement(Motor * motor, int id, int speed);
+int motor_movement(Motor * motor, int id, int speed, int orientation);
+int set_control_mode(Motor * motor, int mode);
+void print_speed(Motor motor);
+
 #endif	
